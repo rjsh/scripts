@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+from json import loads as p,dumps as s
+from Queue import Queue
+from threading import Thread
+from tornado import websocket, web, ioloop
+from urlparse import urlparse
+
+from os import environ
+from os.path import join, basename, expanduser as u
+environ['PATH']+=':'+u('~/homebrew/bin')
+from sh import ErrorReturnCode, wget
+
+songs = dict()
+dlq = Queue()
+
+def dl():
+  while True:
+    try:
+      url = dlq.get()
+      cache='/Volumes/tmpfs/Caches/163'
+      log='/Volumes/tmpfs/log/163.wget.log'
+      wget('-o {log} -nc -P {cache} {url}'.format(**vars()).split())
+    except ErrorReturnCode, e:
+      print e
+      pass
+    finally:
+      dlq.task_done()
+
+class SocketHandler(websocket.WebSocketHandler):
+  def on_message(self, message):
+    song=p(message)
+    song['path']=join(*['/', 'Volumes', 'tmpfs', 'Downloads', basename(urlparse(song['url']).path)])
+    songs[song['href']]=song
+    dlq.put(song['url'])
+
+class ListHandler(web.RequestHandler):
+  def get(self, *args):
+    for song in songs.values():
+      self.write(u'{title}\t{artist}\t{path}\n'.format(**song))
+
+app = web.Application([
+  (r'/submit', SocketHandler),
+  (r'/list', ListHandler),
+])
+
+if __name__ == '__main__':
+  # download in Chrome instead
+  # dl_thread = Thread(target=dl)
+  # dl_thread.daemon = True
+  # dl_thread.start()
+
+  app.listen(2178,address='127.0.0.1')
+  ioloop.IOLoop.instance().start()

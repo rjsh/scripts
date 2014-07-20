@@ -1,0 +1,23 @@
+#!/bin/sh
+export PATH=$HOME/.rbenv/shims:$HOME/homebrew/bin:$PATH
+w=`ruby << eof | fzf | cut -d: -f1
+require 'totalspaces2'
+puts TotalSpaces2.window_list\
+  .select {|w| w[:app_name]!='Terminal'}\
+  .map {|w| '%{window_id}:%{space_number} [ %{app_name} ] %{title}'%w}\
+  .uniq.join("\n")
+eof`
+
+if [ -n "$w" ]
+then
+ruby << eof
+require 'totalspaces2'
+TotalSpaces2.set_front_window($w)
+eof
+fi
+
+osascript <<EOF
+tell application "Terminal"
+  quit
+end tell
+EOF

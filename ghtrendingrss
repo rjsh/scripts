@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+from lxml.etree import tostring as s,parse as x
+from os.path import dirname as dirn
+from sys import stdin
+from urlparse import urlparse as urlp
+
+class Item(object):
+  def __init__(self,e):
+    object.__setattr__(self,'e',e)
+
+  def __getattr__(self,a):
+    return self.e.find(a).text or 'n/a'
+
+  def __setattr__(self,a,v):
+    self.e.find(a).text=unicode(v,'utf8')
+
+  def owner(self):
+    return dirn(urlp(self.link).path)[1:]
+
+  def __repr__(self):
+    return s(self.e,encoding='utf8')
+
+def mktitle(it):
+  trim=lambda d:d if len(d) <= 60 else (d[:60]+'*')
+  return u' - '.join([it.title,trim(it.description),it.owner()]).encode('utf8')
+
+feed=x(stdin)
+for it in feed.findall('.//item'):
+  it=Item(it)
+  it.title=mktitle(it)
+
+print s(feed,encoding='utf8')

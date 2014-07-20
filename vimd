@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+from os import system as x,chdir as cd
+from os.path import *
+from subprocess import call
+from sys import *
+from tempfile import NamedTemporaryFile as mktemp
+
+if isdir(argv[1]):
+  d=argv[1]
+else:
+  d=dirname(argv[1])
+
+cd(d)
+tmp=mktemp(dir='.',prefix=basename(realpath(d)))
+with tmp.file as f:
+  call(['tree','-a','-n','-f','.'],stdout=f)
+  x('vim '+tmp.name)

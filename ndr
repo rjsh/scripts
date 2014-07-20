@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+from bs4 import BeautifulSoup as soup
+from contextlib import closing as cl
+from os import chdir as cd,system as x
+from re import compile
+from sh import wget
+from sys import argv,stderr
+from tempfile import mkdtemp as tmpd
+from time import strftime as ft,strptime as pt,localtime as lt
+from urllib import quote as q
+from urllib2 import urlopen as uo
+
+l=lambda r:'http://www.ndr.de/'+r
+idx='http://www.ndr.de/info/programm/ndrinfonews101.html'
+date=ft('%d.%m.') if len(argv)<2 else argv[1]
+
+# text file index
+with cl(uo(idx)) as in_:
+  pg=in_.read()
+  doc=soup(pg)
+  a=doc.find('a',text=date)
+  urls=map(lambda li: l(li.a['href']), a.parent.ul.find_all('li'))
+
+# audio file index
+date_t=pt(ft('%y.')+date,'%y.%d.%m.')
+m3idx=ft('http://rshih.info:8080/%Y/%m%d/',date_t)
+with cl(uo(m3idx)) as in_:
+  m3pg=in_.read()
+  doc=soup(m3pg)
+  m3s=doc.find_all('a',text=compile('mp3'))
+  m3s=map(lambda a:m3idx+a['href'],m3s)
+
+# order text and audio urls
+key=lambda u:pt(u.split('/')[-1],'AU-%Y%m%d-%H%M-%S42.mp3') if u.endswith('mp3')\
+      else pt(u,'http://www.ndr.de//info/nachrichten313_con-%yx%mx%dx%Hy%M.html')
+
+urls=sorted(urls+m3s,key=key)
+keep=[]
+for i in xrange(1,len(urls)):
+  h=urls[i-1]
+  u=urls[i]
+  if u.endswith('mp3') and h.endswith('html'):
+    keep.extend([u,h])
+
+# segment (translated) text and audio urls
+out=None
+d=tmpd(prefix='ndr.',dir='/Volumes/tmpfs')
+cd(d)
+for u in keep:
+  if u.endswith('mp3'):
+    wget(u,_err=stderr)
+    outp=ft('%H%M.txt',pt(u.split('/')[-1],'AU-%Y%m%d-%H%M-%S42.mp3'))
+    if out:
+      out.close()
+    out=open(outp,'w')
+    print >> out, u.split('/')[-1]
+  else:
+    with cl(uo(u)) as in_:
+      html=in_.read()
+      doc=soup(html)
+      for h in doc.find_all('h2')[:-1]:
+        p=h.find_next_sibling('div').p
+        txt=p.string
+        p.string.replace_with(txt[:txt.rfind('|')])
+        trans='https://translate.google.com/#de/en/'
+        data='\n'.join(map(lambda e:(e.string or '').encode('utf8'),[h,p]))
+        print >> out, trans+q(data)
+out.close()
+
+print d
+x("vim `find . -name '*.txt'`")

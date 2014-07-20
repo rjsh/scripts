@@ -1,0 +1,42 @@
+#!/bin/sh
+export PATH=$HOME/.rbenv/shims:$HOME/homebrew/bin:$HOME/bin:$PATH
+
+tid=`ruby << eof | fzf | cut -d ' ' -f1
+require 'json'
+require 'open-uri'
+tabs = open('http://localhost:3141/api?cmd=l') {|c| JSON.load(c)['ts'] }
+tabs.sort! {|a,b| -(a['a'] <=> b['a']) }
+tabs.each do |t|
+  t[:t]=t['t']
+  t[:tt]=t['tt']
+  puts '%{t} %{tt}'%t
+end
+eof`
+
+if [ -n "$tid" ]
+then
+ruby << eof
+require 'totalspaces2'
+title2window = Hash[
+  TotalSpaces2.window_list\
+  .select {|w| w[:app_name]=='Google Chrome'}\
+  .map {|w| [w[:title], w]}
+]
+
+require 'json'
+require 'open-uri'
+tid = $tid
+tabs = open('http://localhost:3141/api?cmd=l') {|c| JSON.load(c)['ts'] }
+wid = tabs.select {|t| t['t']==tid}[0]['w']
+tt = tabs.select {|t| t['w']==wid && title2window.has_key?(t['tt'])}[0]['tt']
+
+TotalSpaces2.set_front_window(title2window[tt][:window_id])
+%x( chrome-cli activate -t #{tid} )
+eof
+fi
+
+osascript <<EOF
+tell application "Terminal"
+  quit
+end tell
+EOF

@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+
+from argparse import FileType, ArgumentParser
+from bs4 import BeautifulSoup
+from collections import OrderedDict, namedtuple
+from json import dump
+import logging
+from random import randint
+import requests
+from sys import argv,stdout
+from time import sleep
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(message)s')
+logger = logging.getLogger(__name__)
+
+class IDA:
+  def __init__(self, dom, kw):
+    h3 = dom.find("h3")
+    self.kw = kw
+    self.href = h3.a["href"]
+    self.title = h3.get_text()
+    self.explore = map(lambda div: div.a.get_text(), dom.find_all(class_="rd-label"))
+
+  def __str__(self):
+    return u'{title} ({href}) {explore}'.format(**vars(self))
+
+Query=namedtuple("Query", "q depth")
+
+h = { "User-Agent": " ".join([
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3)",
+  "AppleWebKit/537.36 (KHTML, like Gecko)",
+  "Chrome/37.0.2041.4 Safari/537.36"
+])}
+
+def craw(term, max_depth=1, sleep_secs=0):
+  idas = OrderedDict()
+  seed = Query(term, 0)
+  qs = [ seed ]
+  queried = set()
+
+  while qs:
+    q = qs.pop(0)
+    d = q.depth
+    p = { "q": q.q, "tbs": "ida:1", "ie": "UTF-8", "oe": "UTF-8" }
+    if q.q in queried:
+      continue
+    elif d >= max_depth:
+      continue
+    else:
+      queried.add(q.q)
+
+    logger.debug("querying %s", q)
+    r = requests.get("https://www.google.com/search", headers=h, params=p)
+    dom = BeautifulSoup(r.text)
+    for res in dom.select("li.g._r"):
+      ida = IDA(res, q.q)
+      idas[ida.href] = vars(ida)
+      logger.debug("bookmarked %s", vars(ida))
+      for x in ida.explore:
+        qs.append(Query(x, d+1))
+
+    if sleep_secs > 0:
+      secs = randint(sleep_secs, 2 * sleep_secs)
+      logger.debug("sleeping for %d sec(s)", secs)
+      sleep(secs)
+
+  logger.debug("queried %d term(s): %s", len(queried), queried)
+  return idas
+
+
+def main(argv):
+  parser = ArgumentParser(description="Craw Google In-depth articles.")
+  parser.add_argument("-d", metavar="level", help="max depth", type=int, default=1)
+  parser.add_argument("-w", metavar="secs", help="query interval", type=int, default=5)
+  parser.add_argument("-o", metavar="file", help="output json", type=FileType("w"), default=stdout)
+  parser.add_argument("term", help="query term")
+
+  args = parser.parse_args(argv)
+  idas = craw(args.term, args.d, args.w)
+
+  logger.debug("dumping %d link(s)", len(idas))
+  with args.o as out:
+    dump(idas, out)
+
+if __name__ == '__main__':
+  main(argv[1:])
+
+'''
+GET /javascript/jquery/jquery-2.0.3.min.map HTTP/1.1
+Host: media.readthedocs.org
+Connection: keep-alive
+Cache-Control: max-age=0
+X-DevTools-Request-Initiator: frontend
+Accept: */*
+Referer: http://docs.python-requests.org/en/latest/user/quickstart/
+Accept-Encoding: gzip,deflate,sdch
+Accept-Language: en-US,en;q=0.8
+https://www.google.com/webhp?#q=google+search+url&tbs=ida:1
+'''

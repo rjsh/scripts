@@ -1,0 +1,11 @@
+#!/bin/sh
+
+PATH=$HOME/bin:$PATH
+Caches=/Volumes/tmpfs/Caches
+COOKIES_TXT=$Caches/chrome-cookies.txt
+# EXT_URL=chrome-extension://pccpfidgheoejfnpjjkccfgchlnienbe/cookies.html
+
+# chrome-cli list links | grep -q $EXT_URL || chrome-cli open $EXT_URL &> /dev/null
+# TAB=`chrome-cli list links | grep -m 1 $EXT_URL | cut -d ']' -f1 | cut -d : -f2`
+TMP=`mktemp $Caches/chrome-cookies-XXX`
+cookies > $TMP && mv $TMP $COOKIES_TXT

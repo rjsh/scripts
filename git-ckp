@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+# git checkpoint
+from os.path import basename
+from subprocess import check_output as co,check_call as cc
+from sys import *
+from time import ctime as date
+
+basename_status=lambda ln:(lambda fields:' '.join([fields[0],basename(fields[-1])]))(ln.strip().split())
+_=lambda cmd:cc(cmd.replace(' ','|').format(**globals()).split('|'))
+_l=lambda cmd:filter(len,co(cmd.format(**globals()).split()).split('\n'))
+
+status=_l('git status -s -uno')
+if not status:
+  print 'nothing added to commit'
+else:
+  commit_args='-a|-m|{msg}'.split()
+  msg=['checkpoint at ' + date()]
+  msg.extend(map(basename_status, status))
+  msg=';\n'.join(msg)
+  _('git|commit|-a|-m|{msg}')

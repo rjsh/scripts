@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+from sh import rsync
+from sys import *
+
+args='-auvP --delete-excluded --exclude-from=- {f} {t}'\
+    .format(f=argv[1],t=argv[2]).split()
+
+exclude='''
+*.log
+*.cfs
+*.swp
+*.pdom
+.plugins/org.eclipse.jdt.core
+'''
+
+print args
+rsync(args,
+    _in=exclude,
+    _out=stdout,
+    _err=stderr)

@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+
+require 'json'
+require 'open-uri'
+
+puts '# '+`date`
+JSON.load_default_options.update symbolize_names: true
+cookies = open('http://localhost:3141/api?cmd=cs') {|c| JSON.load(c)[:cs] }
+cookies.each do |c|
+  c[:notHostOnly]=(!c[:hostOnly]).to_s.upcase
+  c[:secure]=c[:secure].to_s.upcase
+  c[:expirationDate] = c[:expirationDate] ? c[:expirationDate] : "0"
+  fmt="domain notHostOnly path secure expirationDate name value".split.map {|p| '%'+['{','}'].join(p)}.join("\t")
+  puts fmt%c
+end

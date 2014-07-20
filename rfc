@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+__author__ = 'robertshih'
+import re
+from collections import namedtuple, OrderedDict
+from itertools import chain, dropwhile, takewhile
+from os.path import abspath, splitext
+import sys
+
+
+def escape(line):
+    return re.sub("[/^$]", lambda m: "\\" + m.group(), line)
+
+
+class Tag(namedtuple("Tag", "name file addr kind line")):
+    @property
+    def sec(self):
+        return self.name.split("  ", 1)[0]
+
+    @property
+    def parent(self):
+        parent = ".".join(self.sec.split(".")[:-1])
+        return ("Appendix-" + parent) if re.match("[A-Z]$", parent) else parent
+
+    def scoped(self, parent):
+      return ScopedTag(parent, self)
+
+    def asline(self):
+        tgfmt = '{name} {file} /^{addr}$/;" {kind} line:{line} language:rfc'.replace(" ", "\t")
+        return tgfmt.format(**self._asdict())
+
+
+class ScopedTag:
+    def __init__(self, parent, tag):
+        self.parent = parent 
+        self.tag = tag   
+
+    def asline(self):
+        extra = map(lambda kv: ":".join(kv), [("section", self.parent.name), ("fullpath", self.tag.name)])
+        return "\t".join([self.tag.asline()] + extra)
+
+
+class Header(namedtuple("Header", "file number line")):
+    @property
+    def tag(self):
+        tag = self.tags[0]
+        sec, tit = self.line.split("  ", 1)
+        return tag._replace(name="  ".join([sec[:-1], tit]))
+
+    @property
+    def tags(self):
+        # name variants
+        name = self.line.split("  ")[0]
+        names = [name, name[:-1]]
+        if re.match("[A-Z]\\.", name):
+            names.extend(map(lambda nm: "Appendix-" + nm, names))
+        elif name.startswith("Appendix "):
+            names.extend(map(lambda nm: nm.replace("Appendix ", "Appendix-"), names))
+
+        addr = escape(self.line)
+        line = self.number
+
+        return map(lambda nm: Tag(nm, self.file, addr, "s", line), names)
+
+
+class Ref(namedtuple("Ref", "file number line")):
+    @property
+    def tag(self):
+        tag = self.tags[0]
+        return tag._replace(name=tag.name[1:])
+
+    @property
+    def tags(self):
+        name = "\\" + re.match("\\[.+?\\]", self.line.strip()).group()
+        names = [name, name + "."]
+        addr = escape(self.line.rstrip())
+        line = self.number
+        return map(lambda nm: Tag(nm, self.file, addr, "r", line), names)
+
+
+class Rfc:
+    def __init__(self, path):
+        self.file = abspath(path)
+
+    def fixlink(self, path=None):
+        if not path:
+            base, _ = splitext(self.file)
+            path = base + ".rfc"
+
+        with open(path, "w") as o:
+            with open(self.file) as lines:
+                for line in lines:
+                    o.write(re.sub("Appendix [A-Z](\\W|$)", lambda m: m.group().replace(" ", "-", 1), line))
+            return Rfc(o.name)
+
+    @property
+    def lines(self):
+        with open(self.file) as lines:
+            return list(lines)
+
+    @property
+    def headers(self):
+        lines = self.lines
+        for (i, line) in enumerate(lines):
+            if "\f" in map(lambda ll: ll[0], lines[i - 1:i + 2]):
+                continue
+            if re.match("\\s", line):
+                continue
+            yield Header(self.file, i + 1, line.strip())
+
+    def reftags(self, idx=True):
+        seen = set()
+        lines = dropwhile(lambda (_, line): not line.strip().endswith("References"), enumerate(self.lines))
+        for (i, line) in lines:
+            if line.strip().startswith("["):
+                ref = Ref(self.file, i + 1, line)
+                tags = ref.tags if idx else [ref.tag]
+                for reftag in tags:
+                    if reftag.name in seen:
+                        raise StopIteration
+                    seen.add(reftag.name)
+                    yield reftag
+
+    def htags(self, idx=True):
+        headers = self.headers
+        headers = dropwhile(lambda h: h.line != "Table of Contents", headers)
+        headers.next()
+        headers = takewhile(lambda h: h.line != "Authors' Addresses", headers)
+        return chain(*map(lambda h: h.tags if idx else [h.tag], headers))
+
+    @property
+    def tags(self):
+        return sorted(chain(self.htags(), self.reftags()))
+
+    @property
+    def buftags(self):
+        return sorted(chain(self.htags(idx=False), self.reftags(idx=False)))
+
+    @property
+    def tagbar(self):
+        tags = self.htags(idx=False)
+        tocmap = OrderedDict(map(lambda t: (t.sec, t), tags))
+        for sec in tocmap:
+            t = tocmap[sec]
+            if t.parent:
+                yield t.scoped(tocmap[t.parent])
+            else:
+                yield t
+
+
+def main(argv):
+    cmd = argv[1]
+    path = argv[2]
+    if cmd == "bt":
+        for tag in Rfc(path).buftags:
+            print tag.asline()
+    elif cmd == "tb":
+        for tag in Rfc(path).tagbar:
+            print tag.asline()
+    elif cmd == "idx":
+        base, _ = splitext(path)
+        tagfile = base + ".tags"
+        rfc = Rfc(path).fixlink()
+        with open(tagfile, "w") as o:
+            for tag in rfc.tags:
+                print>>o, tag.asline()
+
+if __name__ == '__main__':
+    main(sys.argv)

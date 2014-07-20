@@ -1,0 +1,2 @@
+#!/bin/sh
+git log --pretty='%h %ae %s' "$@" | fzf -e | cut -d ' ' -f1

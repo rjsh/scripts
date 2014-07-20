@@ -1,0 +1,10 @@
+#!/usr/bin/env python
+from sys import *
+from subprocess import call as c,check_output as co
+
+prefix=''
+if len(argv)>1:
+  prefix='ssh '+argv[1]
+
+b=co(prefix+' tmux lsb | fzf | cut -d: -f1',shell=True)
+c(prefix+' tmux showb -b '+b,shell=True)

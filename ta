@@ -1,0 +1,69 @@
+#!/usr/bin/env python
+from os import unlink as rm
+from os import chmod,open as _open ,fdopen as fd
+from os.path import join as j,expanduser as u
+from subprocess import call as c,check_output as co
+from stat import S_IRWXU as rw,S_IXUSR as x
+from tempfile import NamedTemporaryFile as tmp
+
+def ff(ls):
+  log=tmp(delete=False)
+  try:
+    with log:
+      print>>log, '\n'.join(map(str,ls))
+
+    log=log.name
+    fzf=u('~/homebrew/bin/fzf')
+    return co('{fzf} < {log}'.format(**vars()),shell=True).strip()
+  finally:
+    rm(log)
+
+def hosts():
+  with open(u('~/.ssh/config')) as f:
+    return map(lambda l:l.split()[1],filter(lambda l:l.startswith('Host'),f))+['localhost']
+
+def _(cmd):
+  try:
+    return co(cmd.format(**globals()),shell=True).strip().split('\n')
+  except:
+    return []
+
+h=ff(hosts())
+if h=='localhost':
+  prefix=''
+  mux=u('~/.rbenv/versions/2.0.0-p247/bin/mux')
+  tmux=u('~/homebrew/bin/tmux')
+else:
+  prefix='ssh {h} '
+  mux='mux'
+  tmux='tmux'
+
+info={}
+for ln in _(prefix+'{mux} ls')[1:]:
+  for p in ln.split():
+    info[p]=''
+for ss in _(prefix+'{tmux} ls'):
+  info.update([ss.split(':',1)])
+p=eval(ff(info.items()))[0]
+
+if h=='localhost':
+  lines=_('zsh -l -c "{mux} start {p}" 2>/dev/null')
+  # lines[0]+=' -l'
+  # lines[1:1]=['rm $0','export TERM=screen-256color-bce']
+
+  # script=tmp(delete=False)
+  # with script:
+  #   print>>script,'\n'.join(lines)
+  # script=script.name
+  # chmod(script,rw|x)
+  # c(script)
+
+else:
+  heredoc='''
+script=`mktemp -u`;
+mux debug {p} | sed -e "1aexport TERM=xterm-256color" -e "1arm $script" > $script;
+chmod +x $script;
+$script
+'''.format(**globals())
+
+  c(['ssh','-t',h,heredoc])
